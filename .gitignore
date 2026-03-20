@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.mp4
+*.m4a
+*.pdf
+*.txt
+*.csv
+*.json
+*.png
+.agent/
+.agents/
+.gemini/
+.env
