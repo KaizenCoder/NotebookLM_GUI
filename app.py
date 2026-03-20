@@ -49,14 +49,14 @@ class NotebookLMApp(ctk.CTk):
         self.btn_login = ctk.CTkButton(self.left_actions, text="🔑 Login", width=80, command=self.login_notebooklm, fg_color="#d9534f", hover_color="#c9302c")
         self.btn_login.grid(row=0, column=1, padx=5, sticky="w")
 
-        self.sort_var = ctk.StringVar(value="Chronologique")
+        self.sort_var = ctk.StringVar(value="Alphabétique")
         self.combo_sort = ctk.CTkComboBox(self.left_actions, values=["Chronologique", "Alphabétique"], variable=self.sort_var, command=self.render_notebooks, width=130)
         self.combo_sort.grid(row=0, column=3, sticky="e")
 
         self.nb_scroll = ctk.CTkScrollableFrame(self.left_panel)
         self.nb_scroll.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
         
-        self.lbl_status_nb = ctk.CTkLabel(self.left_panel, text="Cliquez sur Actualiser", text_color="gray")
+        self.lbl_status_nb = ctk.CTkLabel(self.left_panel, text="Connexion en cours...", text_color="gray")
         self.lbl_status_nb.grid(row=3, column=0, padx=10, pady=5, sticky="w")
 
         # ================== DROITE : RESSOURCES ==================
@@ -66,7 +66,7 @@ class NotebookLMApp(ctk.CTk):
         self.right_panel.grid_columnconfigure(0, weight=1)
         self.right_panel.grid_rowconfigure(2, weight=1)
 
-        self.lbl_resources = ctk.CTkLabel(self.right_panel, text="Sources et Artefacts du carnet", font=ctk.CTkFont(size=18, weight="bold"))
+        self.lbl_resources = ctk.CTkLabel(self.right_panel, text="Aucun carnet sélectionné", font=ctk.CTkFont(size=18, weight="bold"))
         self.lbl_resources.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.en_filter_res = ctk.CTkEntry(self.right_panel, placeholder_text="Filtrer par type, nom...")
@@ -101,13 +101,16 @@ class NotebookLMApp(ctk.CTk):
         self.lbl_status_res.grid(row=4, column=0, padx=10, pady=5, sticky="w")
 
         self.after(100, lambda: self.paned_window.sash_place(0, 450, 0))
+        
+        # Démarrage automatique
+        self.after(100, lambda: self.login_notebooklm(auto_fetch=True))
 
     def choose_destination(self):
         folder = filedialog.askdirectory(title="Choisir le dossier de sauvegarde", initialdir=self.dest_var.get())
         if folder:
             self.dest_var.set(folder)
 
-    def login_notebooklm(self):
+    def login_notebooklm(self, auto_fetch=False):
         self.lbl_status_nb.configure(text="Authentification Chrome Google en cours...")
         self.btn_login.configure(state="disabled")
         self.btn_refresh_nb.configure(state="disabled")
@@ -118,7 +121,9 @@ class NotebookLMApp(ctk.CTk):
                 env["CI"] = "1"
                 p = subprocess.run("nlm login", env=env, shell=True, capture_output=True, text=True)
                 if p.returncode == 0:
-                    self.after(0, lambda: self.lbl_status_nb.configure(text="Connecté avec succès ! Cliquez sur Actualiser."))
+                    self.after(0, lambda: self.lbl_status_nb.configure(text="Connecté avec succès !"))
+                    if auto_fetch:
+                        self.after(0, self.fetch_notebooks)
                 else:
                     self.after(0, lambda: self.lbl_status_nb.configure(text=f"Échec de connexion: {p.stderr[:50]}..."))
             except Exception as e:
@@ -185,19 +190,27 @@ class NotebookLMApp(ctk.CTk):
             sorted_nbs = sorted(self.notebooks_data, key=lambda x: x.get("updated_at", ""), reverse=True)
             
         for nb in sorted_nbs:
-            title = nb.get("title", "Sans titre").strip()
+            nb_id = nb.get("id")
+            nb_title = nb.get("title", "Sans titre").strip()
+            
             btn = ctk.CTkButton(
                 self.nb_scroll, 
-                text=f"📄 {title}", 
-                fg_color="#3a3a3a", hover_color="#4f4f4f", 
+                text=f"📄 {nb_title}", 
+                fg_color="#3a3a3a", 
+                hover_color="#4f4f4f",
                 anchor="w", 
-                command=lambda id_=nb.get("id"): self.select_notebook(id_)
+                command=lambda i=nb_id, t=nb_title: self.select_notebook(i, t)
             )
             btn.pack(fill="x", pady=2, padx=5)
 
-    def select_notebook(self, nb_id):
+    def select_notebook(self, nb_id, nb_title=""):
         self.selected_notebook_id = nb_id
-        self.lbl_status_res.configure(text="Recherche des ressource et artéfacts...")
+        
+        # Mettre à jour le titre dynamiquement
+        titre_affichage = f'Carnet : "{nb_title}"' if nb_title else "Sources et Artefacts"
+        self.lbl_resources.configure(text=titre_affichage)
+        
+        self.lbl_status_res.configure(text="Chargement des ressources...")
         self.btn_download.configure(state="disabled")
         
         self.en_filter_res.delete(0, 'end')
