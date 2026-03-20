@@ -400,6 +400,11 @@ class NotebookLMApp(ctk.CTk):
             env["NO_COLOR"] = "1"
 
             try:
+                def sanitize_name(text):
+                    import unicodedata
+                    text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
+                    return "".join([c if c.isalnum() else "_" for c in text]).strip("_")
+
                 for cb in selected:
                     res = cb.resource_data
                     res_id = res.get("id")
@@ -410,7 +415,7 @@ class NotebookLMApp(ctk.CTk):
                     if is_source:
                         raw_title = res.get("title")
                         if not raw_title: raw_title = "source_inconnue"
-                        safe_title = "".join([c for c in str(raw_title) if c.isalnum() or c in ' ._-']).rstrip()
+                        safe_title = sanitize_name(raw_title)
                         if not safe_title: safe_title = str(res_id)
                         
                         cmd = f'nlm source get {res_id}'
@@ -445,7 +450,7 @@ class NotebookLMApp(ctk.CTk):
                         
                         raw_title = res.get("title")
                         if not raw_title: raw_title = f"Artefact_{art_type}"
-                        safe_title = "".join([c for c in str(raw_title) if c.isalnum() or c in ' ._-']).rstrip()
+                        safe_title = sanitize_name(raw_title)
                         if not safe_title: safe_title = str(res_id)
                         
                         out_path = os.path.join(dest, f"{safe_title}.{ext}")
@@ -463,8 +468,8 @@ class NotebookLMApp(ctk.CTk):
                 try:
                     nb_title_str = self.lbl_resources.cget("text").replace('Carnet : "', '').replace('"', '').strip()
                     if not nb_title_str or nb_title_str == "Sources et Artefacts": nb_title_str = "Notebook"
-                    safe_nb_title = "".join([c for c in nb_title_str if c.isalnum() or c in ' ._-']).rstrip()
-                    url_path = os.path.join(dest, f"Accès_Direct_{safe_nb_title}.url")
+                    safe_nb_title = sanitize_name(nb_title_str)
+                    url_path = os.path.join(dest, f"Acces_Direct_{safe_nb_title}.url")
                     
                     with open(url_path, "w", encoding="utf-8") as f:
                         f.write("[InternetShortcut]\n")
