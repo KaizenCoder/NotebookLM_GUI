@@ -34,13 +34,17 @@ class NotebookLMApp(ctk.CTk):
         self.paned_window.add(self.left_panel, minsize=350, stretch="always")
         
         self.left_panel.grid_columnconfigure(0, weight=1)
-        self.left_panel.grid_rowconfigure(2, weight=1)
+        self.left_panel.grid_rowconfigure(3, weight=1) # ROW 3 pour que la scrollView prenne tout l'espace disponible
 
         self.lbl_notebooks = ctk.CTkLabel(self.left_panel, text="Vos Carnets", font=ctk.CTkFont(size=18, weight="bold"))
         self.lbl_notebooks.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        
+
+        self.en_filter_nb = ctk.CTkEntry(self.left_panel, placeholder_text="Rechercher un carnet...")
+        self.en_filter_nb.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
+        self.en_filter_nb.bind("<KeyRelease>", self.render_notebooks)
+
         self.left_actions = ctk.CTkFrame(self.left_panel, fg_color="transparent")
-        self.left_actions.grid(row=1, column=0, padx=10, sticky="ew")
+        self.left_actions.grid(row=2, column=0, padx=10, sticky="ew")
         self.left_actions.grid_columnconfigure(2, weight=1)
         
         self.btn_refresh_nb = ctk.CTkButton(self.left_actions, text="Actualiser", width=90, command=self.fetch_notebooks)
@@ -52,10 +56,6 @@ class NotebookLMApp(ctk.CTk):
         self.sort_var = ctk.StringVar(value="Alphabétique")
         self.combo_sort = ctk.CTkComboBox(self.left_actions, values=["Chronologique", "Alphabétique"], variable=self.sort_var, command=self.render_notebooks, width=130)
         self.combo_sort.grid(row=0, column=3, sticky="e")
-
-        self.en_filter_nb = ctk.CTkEntry(self.left_panel, placeholder_text="Rechercher un carnet...")
-        self.en_filter_nb.grid(row=2, column=0, padx=10, pady=(10, 5), sticky="ew")
-        self.en_filter_nb.bind("<KeyRelease>", self.render_notebooks)
 
         self.nb_scroll = ctk.CTkScrollableFrame(self.left_panel)
         self.nb_scroll.grid(row=3, column=0, padx=10, pady=5, sticky="nsew")
@@ -75,17 +75,24 @@ class NotebookLMApp(ctk.CTk):
 
         self.right_actions = ctk.CTkFrame(self.right_panel, fg_color="transparent")
         self.right_actions.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
-        self.right_actions.grid_columnconfigure(0, weight=1)
+        self.right_actions.grid_columnconfigure(1, weight=1)
 
-        self.en_filter_res = ctk.CTkEntry(self.right_actions, placeholder_text="Rechercher par nom...")
-        self.en_filter_res.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+        self.en_filter_res = ctk.CTkEntry(self.right_actions, placeholder_text="Rechercher par nom...", width=160)
+        self.en_filter_res.grid(row=0, column=0, padx=(0, 5), sticky="w")
         self.en_filter_res.bind("<KeyRelease>", self.render_resources)
 
-        self.combo_type_res = ctk.CTkComboBox(self.right_actions, values=["Tous", "SOURCES", "ARTEFACTS", "AUDIO", "VIDEO", "DOCUMENT", "IMAGE", "TABLE"], command=self.render_resources, width=120)
-        self.combo_type_res.grid(row=0, column=1, padx=5)
+        self.filter_types_frame = ctk.CTkScrollableFrame(self.right_actions, fg_color="transparent", orientation="horizontal", height=30)
+        self.filter_types_frame.grid(row=0, column=1, padx=5, sticky="ew")
+        
+        self.cb_filters = {}
+        for idx, f_type in enumerate(["Sources", "Audio", "Vidéo", "Rapports", "Autres Artefacts"]):
+            var = ctk.BooleanVar(value=True)
+            cb = ctk.CTkCheckBox(self.filter_types_frame, text=f_type, variable=var, command=self.render_resources, width=80)
+            cb.grid(row=0, column=idx, padx=5)
+            self.cb_filters[f_type] = var
 
         self.cb_select_all = ctk.CTkCheckBox(self.right_actions, text="Tout sélectionner", command=self.toggle_select_all, width=120)
-        self.cb_select_all.grid(row=0, column=2, padx=(5, 0))
+        self.cb_select_all.grid(row=0, column=2, padx=(5, 0), sticky="e")
 
         self.res_scroll = ctk.CTkScrollableFrame(self.right_panel)
         self.res_scroll.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
@@ -294,6 +301,7 @@ class NotebookLMApp(ctk.CTk):
 
     def render_resources(self, event=None):
         filter_text = self.en_filter_res.get().lower()
+        active_filters = [f_type for f_type, var in self.cb_filters.items() if var.get()]
         
         for widget in self.res_scroll.winfo_children():
             widget.destroy()
@@ -318,7 +326,8 @@ class NotebookLMApp(ctk.CTk):
             "mind_map": "Carte Mentale",
             "slide_deck": "Diapositives",
             "quiz": "Quiz Interactif",
-            "flashcards": "Flashcards"
+            "flashcards": "Flashcards",
+            "data_table": "Tableau de Données"
         }
         
         for res in self.combined_resources:
@@ -327,15 +336,27 @@ class NotebookLMApp(ctk.CTk):
             res_id = res.get("id", "Sans ID")
             status = res.get("status", "N/A")
             is_source = res.get("is_source")
+            art_type = res.get("art_type", "inconnu").lower()
             
             if is_source:
                 display_name = title if (title and str(title).strip()) else f"Source ID: {res_id}"
             else:
-                art_type = res.get("art_type", "inconnu")
-                default_title = gen_names.get(art_type.lower(), f"Artefact généré")
+                default_title = gen_names.get(art_type, f"Artefact généré")
                 display_name = title if (title and str(title).strip()) else default_title
 
             if filter_text and filter_text not in display_name.lower() and filter_text not in typ.lower():
+                continue
+                
+            allowed = False
+            if is_source:
+                if "Sources" in active_filters: allowed = True
+            else:
+                if art_type == "audio" and "Audio" in active_filters: allowed = True
+                elif art_type == "video" and "Vidéo" in active_filters: allowed = True
+                elif art_type in ["report", "slide_deck", "data_table", "mind_map"] and "Rapports" in active_filters: allowed = True
+                elif art_type not in ["audio", "video", "report", "slide_deck", "data_table", "mind_map"] and "Autres Artefacts" in active_filters: allowed = True
+                
+            if not allowed:
                 continue
                 
             displayed_count += 1
