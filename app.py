@@ -486,6 +486,13 @@ class NotebookLMApp(ctk.CTk):
                         if art_type_cmd in ["audio", "video", "slide-deck", "infographic"]:
                             cmd += " --no-progress"
                             
+                        # Nettoyer l'ancien fichier s'il existe pour éviter le FileExistsError sous Windows (Bug temp_file.rename(out_path))
+                        if os.path.exists(out_path):
+                            try:
+                                os.remove(out_path)
+                            except Exception as e:
+                                log_debug(f"[ARTEFACT] Impossible de supprimer le fichier existant avant MAJ: {e}")
+                                
                         log_debug(f"[ARTEFACT] CMD: {cmd}")
                         try:
                             p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True, timeout=300)
