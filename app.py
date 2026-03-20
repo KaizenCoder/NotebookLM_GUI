@@ -480,7 +480,12 @@ class NotebookLMApp(ctk.CTk):
                         
                         out_path = os.path.join(dest, f"{safe_title}.{ext}")
                         
-                        cmd = f'nlm download {art_type} "{self.selected_notebook_id}" --id "{res_id}" --output "{out_path}" --no-progress'
+                        art_type_cmd = art_type.replace('_', '-')
+                        cmd = f'nlm download {art_type_cmd} "{self.selected_notebook_id}" --id "{res_id}" --output "{out_path}"'
+                        
+                        if art_type_cmd in ["audio", "video", "slide-deck", "infographic"]:
+                            cmd += " --no-progress"
+                            
                         log_debug(f"[ARTEFACT] CMD: {cmd}")
                         try:
                             p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True, timeout=300)
