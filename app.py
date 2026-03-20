@@ -38,7 +38,7 @@ class NotebookLMApp(ctk.CTk):
 
         self.lbl_notebooks = ctk.CTkLabel(self.left_panel, text="Vos Carnets", font=ctk.CTkFont(size=18, weight="bold"))
         self.lbl_notebooks.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-
+        
         self.left_actions = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         self.left_actions.grid(row=1, column=0, padx=10, sticky="ew")
         self.left_actions.grid_columnconfigure(2, weight=1)
@@ -53,11 +53,15 @@ class NotebookLMApp(ctk.CTk):
         self.combo_sort = ctk.CTkComboBox(self.left_actions, values=["Chronologique", "Alphabétique"], variable=self.sort_var, command=self.render_notebooks, width=130)
         self.combo_sort.grid(row=0, column=3, sticky="e")
 
+        self.en_filter_nb = ctk.CTkEntry(self.left_panel, placeholder_text="Rechercher un carnet...")
+        self.en_filter_nb.grid(row=2, column=0, padx=10, pady=(10, 5), sticky="ew")
+        self.en_filter_nb.bind("<KeyRelease>", self.render_notebooks)
+
         self.nb_scroll = ctk.CTkScrollableFrame(self.left_panel)
-        self.nb_scroll.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        self.nb_scroll.grid(row=3, column=0, padx=10, pady=5, sticky="nsew")
         
         self.lbl_status_nb = ctk.CTkLabel(self.left_panel, text="Connexion en cours...", text_color="gray")
-        self.lbl_status_nb.grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.lbl_status_nb.grid(row=4, column=0, padx=10, pady=5, sticky="w")
 
         # ================== DROITE : RESSOURCES ==================
         self.right_panel = ctk.CTkFrame(self.paned_window, corner_radius=0)
@@ -69,9 +73,19 @@ class NotebookLMApp(ctk.CTk):
         self.lbl_resources = ctk.CTkLabel(self.right_panel, text="Aucun carnet sélectionné", font=ctk.CTkFont(size=18, weight="bold"))
         self.lbl_resources.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
-        self.en_filter_res = ctk.CTkEntry(self.right_panel, placeholder_text="Filtrer par type, nom...")
-        self.en_filter_res.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
+        self.right_actions = ctk.CTkFrame(self.right_panel, fg_color="transparent")
+        self.right_actions.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
+        self.right_actions.grid_columnconfigure(0, weight=1)
+
+        self.en_filter_res = ctk.CTkEntry(self.right_actions, placeholder_text="Rechercher par nom...")
+        self.en_filter_res.grid(row=0, column=0, padx=(0, 5), sticky="ew")
         self.en_filter_res.bind("<KeyRelease>", self.render_resources)
+
+        self.combo_type_res = ctk.CTkComboBox(self.right_actions, values=["Tous", "SOURCES", "ARTEFACTS", "AUDIO", "VIDEO", "DOCUMENT", "IMAGE", "TABLE"], command=self.render_resources, width=120)
+        self.combo_type_res.grid(row=0, column=1, padx=5)
+
+        self.cb_select_all = ctk.CTkCheckBox(self.right_actions, text="Tout sélectionner", command=self.toggle_select_all, width=120)
+        self.cb_select_all.grid(row=0, column=2, padx=(5, 0))
 
         self.res_scroll = ctk.CTkScrollableFrame(self.right_panel)
         self.res_scroll.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
@@ -104,6 +118,14 @@ class NotebookLMApp(ctk.CTk):
         
         # Démarrage automatique
         self.after(100, lambda: self.login_notebooklm(auto_fetch=True))
+
+    def toggle_select_all(self):
+        select_state = self.cb_select_all.get()
+        for cb in self.resource_checkboxes:
+            if select_state:
+                cb.select()
+            else:
+                cb.deselect()
 
     def choose_destination(self):
         folder = filedialog.askdirectory(title="Choisir le dossier de sauvegarde", initialdir=self.dest_var.get())
@@ -184,14 +206,20 @@ class NotebookLMApp(ctk.CTk):
             widget.destroy()
             
         sort_mode = self.sort_var.get()
+        filter_text = self.en_filter_nb.get().lower()
+        
         if sort_mode == "Alphabétique":
-            sorted_nbs = sorted(self.notebooks_data, key=lambda x: x.get("title", "").lower())
+            sorted_nbs = sorted(self.notebooks_data, key=lambda x: str(x.get("title", "")).lower())
         else:
             sorted_nbs = sorted(self.notebooks_data, key=lambda x: x.get("updated_at", ""), reverse=True)
             
         for nb in sorted_nbs:
             nb_id = nb.get("id")
-            nb_title = nb.get("title", "Sans titre").strip()
+            raw_title = nb.get("title")
+            nb_title = str(raw_title).strip() if raw_title else "Sans titre"
+            
+            if filter_text and filter_text not in nb_title.lower():
+                continue
             
             btn = ctk.CTkButton(
                 self.nb_scroll, 
