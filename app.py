@@ -111,7 +111,16 @@ class NotebookLMApp(ctk.CTk):
         self.btn_dest = ctk.CTkButton(self.right_footer, text="Dossier...", command=self.choose_destination, width=100)
         self.btn_dest.grid(row=0, column=0, padx=5, pady=5)
 
-        self.dest_var = ctk.StringVar(value=os.path.join(os.path.expanduser("~"), "Downloads"))
+        self.settings_file = "settings.json"
+        saved_dest = os.path.join(os.path.expanduser("~"), "Downloads")
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    saved_dest = data.get("dest_path", saved_dest)
+            except Exception: pass
+
+        self.dest_var = ctk.StringVar(value=saved_dest)
         self.lbl_dest = ctk.CTkLabel(self.right_footer, textvariable=self.dest_var, text_color="gray")
         self.lbl_dest.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
@@ -138,6 +147,10 @@ class NotebookLMApp(ctk.CTk):
         folder = filedialog.askdirectory(title="Choisir le dossier de sauvegarde", initialdir=self.dest_var.get())
         if folder:
             self.dest_var.set(folder)
+            try:
+                with open(self.settings_file, "w", encoding="utf-8") as f:
+                    json.dump({"dest_path": folder}, f)
+            except Exception: pass
 
     def login_notebooklm(self, auto_fetch=False):
         self.lbl_status_nb.configure(text="Authentification Chrome Google en cours...")
@@ -398,6 +411,15 @@ class NotebookLMApp(ctk.CTk):
             env = os.environ.copy()
             env["CI"] = "1"
             env["NO_COLOR"] = "1"
+            
+            log_file = os.path.join(dest, "download_debug.log")
+            def log_debug(msg):
+                try:
+                    with open(log_file, "a", encoding="utf-8") as lf:
+                        lf.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+                except Exception: pass
+            
+            log_debug(f"--- DÉBUT TÉLÉCHARGEMENT MASSIF ({len(selected)} ÉLÉMENTS) ---")
 
             try:
                 def sanitize_name(text):
@@ -419,32 +441,35 @@ class NotebookLMApp(ctk.CTk):
                         if not safe_title: safe_title = str(res_id)
                         
                         cmd = f'nlm source get {res_id}'
-                        p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
-                        if p.returncode == 0:
-                            clean_text = strip_ansi(p.stdout)
-                            filepath = os.path.join(dest, f"{safe_title}.txt")
-                            try:
-                                with open(filepath, "w", encoding="utf-8") as f:
-                                    f.write(clean_text)
-                                success_count += 1
-                            except Exception as e:
-                                errors.append(f"Erreur d'écriture source: {str(e)[:50]}")
-                        else:
-                            err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
-                            errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                        log_debug(f"[SOURCE] CMD: {cmd}")
+                        try:
+                            p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True, timeout=300)
+                            if p.returncode == 0:
+                                clean_text = strip_ansi(p.stdout)
+                                filepath = os.path.join(dest, f"{safe_title}.txt")
+                                try:
+                                    with open(filepath, "w", encoding="utf-8") as f:
+                                        f.write(clean_text)
+                                    success_count += 1
+                                    log_debug(f"[SOURCE] SUCCÈS: {filepath}")
+                                except Exception as e:
+                                    err_msg = f"Erreur écriture IO: {str(e)}"
+                                    errors.append(err_msg)
+                                    log_debug(f"[SOURCE] {err_msg}")
+                            else:
+                                err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
+                                errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                                log_debug(f"[SOURCE] ERREUR CLI: {err_out}")
+                        except subprocess.TimeoutExpired:
+                            errors.append(f"[{safe_title[:15]}] Timeout (300s)")
+                            log_debug(f"[SOURCE] TIMEOUT DÉPASSÉ (300s) pour {cmd}")
+                            
                     else:
                         art_type = res.get("art_type", "unknown")
-                        
                         exts = {
-                            "audio": "m4a",
-                            "video": "mp4",
-                            "report": "md",
-                            "slide_deck": "pdf",
-                            "infographic": "png",
-                            "data_table": "csv",
-                            "mind_map": "json",
-                            "quiz": "json",
-                            "flashcards": "json"
+                            "audio": "m4a", "video": "mp4", "report": "md",
+                            "slide_deck": "pdf", "infographic": "png", "data_table": "csv",
+                            "mind_map": "json", "quiz": "json", "flashcards": "json"
                         }
                         ext = exts.get(art_type.lower(), "bin")
                         
@@ -456,12 +481,19 @@ class NotebookLMApp(ctk.CTk):
                         out_path = os.path.join(dest, f"{safe_title}.{ext}")
                         
                         cmd = f'nlm download {art_type} "{self.selected_notebook_id}" --id "{res_id}" --output "{out_path}" --no-progress'
-                        p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
-                        if p.returncode == 0:
-                            success_count += 1
-                        else:
-                            err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
-                            errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                        log_debug(f"[ARTEFACT] CMD: {cmd}")
+                        try:
+                            p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True, timeout=300)
+                            if p.returncode == 0:
+                                success_count += 1
+                                log_debug(f"[ARTEFACT] SUCCÈS: {out_path}")
+                            else:
+                                err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
+                                errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                                log_debug(f"[ARTEFACT] ERREUR CLI: {err_out}")
+                        except subprocess.TimeoutExpired:
+                            errors.append(f"[{safe_title[:15]}] Timeout (300s)")
+                            log_debug(f"[ARTEFACT] TIMEOUT DÉPASSÉ (300s) pour {cmd}")
                             
                     time.sleep(1)
                 
@@ -474,17 +506,21 @@ class NotebookLMApp(ctk.CTk):
                     with open(url_path, "w", encoding="utf-8") as f:
                         f.write("[InternetShortcut]\n")
                         f.write(f"URL=https://notebooklm.google.com/notebook/{self.selected_notebook_id}\n")
+                    log_debug(f"[URL] Fichier raccourci créé: {url_path}")
                 except Exception as e:
                     errors.append(f"Erreur création raccourci URL: {str(e)[:50]}")
+                    log_debug(f"[URL] Erreur création raccourci: {str(e)}")
                     
             except Exception as e:
                 errors.append(f"Erreur critique: {str(e)[:100]}")
+                log_debug(f"[CRATERE] Erreur critique interceptée: {str(e)}")
             
             if not errors:
                 msg = f"Terminé : {success_count}/{len(selected)} fichier(s) sauvegardé(s) !"
             else:
                 msg = f"{success_count}/{len(selected)} OK. Err: " + " | ".join(errors)
                 
+            log_debug(f"--- FIN DES OPÉRATIONS : {success_count}/{len(selected)} réussies ---")
             self.after(0, lambda m=msg: self.lbl_status_res.configure(text=m[:200] + ("..." if len(m)>200 else "")))
             self.after(0, lambda: self.btn_download.configure(state="normal"))
 
