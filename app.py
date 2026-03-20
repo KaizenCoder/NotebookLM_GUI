@@ -399,63 +399,81 @@ class NotebookLMApp(ctk.CTk):
             env["CI"] = "1"
             env["NO_COLOR"] = "1"
 
-            for cb in selected:
-                res = cb.resource_data
-                res_id = res.get("id")
-                is_source = res.get("is_source")
-                
-                if not res_id: continue
+            try:
+                for cb in selected:
+                    res = cb.resource_data
+                    res_id = res.get("id")
+                    is_source = res.get("is_source")
+                    
+                    if not res_id: continue
 
-                if is_source:
-                    raw_title = res.get("title", "source_inconnue")
-                    safe_title = "".join([c for c in raw_title if c.isalnum() or c in ' ._-']).rstrip()
-                    if not safe_title: safe_title = res_id
-                    
-                    cmd = f'nlm source get {res_id}'
-                    p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
-                    if p.returncode == 0:
-                        clean_text = strip_ansi(p.stdout)
-                        filepath = os.path.join(dest, f"{safe_title}.txt")
-                        try:
-                            with open(filepath, "w", encoding="utf-8") as f:
-                                f.write(clean_text)
-                            success_count += 1
-                        except Exception as e:
-                            errors.append(f"Erreur d'écriture source: {str(e)}")
-                    else:
-                        err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
-                        errors.append(f"[{safe_title}] {err_out}")
-                else:
-                    art_type = res.get("art_type", "unknown")
-                    
-                    exts = {
-                        "audio": "m4a",
-                        "video": "mp4",
-                        "report": "md",
-                        "slide_deck": "pdf",
-                        "infographic": "png",
-                        "data_table": "csv",
-                        "mind_map": "json",
-                        "quiz": "json",
-                        "flashcards": "json"
-                    }
-                    ext = exts.get(art_type.lower(), "bin")
-                    
-                    raw_title = res.get("title", f"Artefact_{art_type}")
-                    safe_title = "".join([c for c in raw_title if c.isalnum() or c in ' ._-']).rstrip()
-                    if not safe_title: safe_title = res_id
-                    
-                    out_path = os.path.join(dest, f"{safe_title}.{ext}")
-                    
-                    cmd = f'nlm download {art_type} "{self.selected_notebook_id}" --id "{res_id}" --output "{out_path}" --no-progress'
-                    p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
-                    if p.returncode == 0:
-                        success_count += 1
-                    else:
-                        err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
-                        errors.append(f"[{safe_title}] {err_out}")
+                    if is_source:
+                        raw_title = res.get("title")
+                        if not raw_title: raw_title = "source_inconnue"
+                        safe_title = "".join([c for c in str(raw_title) if c.isalnum() or c in ' ._-']).rstrip()
+                        if not safe_title: safe_title = str(res_id)
                         
-                time.sleep(1)
+                        cmd = f'nlm source get {res_id}'
+                        p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
+                        if p.returncode == 0:
+                            clean_text = strip_ansi(p.stdout)
+                            filepath = os.path.join(dest, f"{safe_title}.txt")
+                            try:
+                                with open(filepath, "w", encoding="utf-8") as f:
+                                    f.write(clean_text)
+                                success_count += 1
+                            except Exception as e:
+                                errors.append(f"Erreur d'écriture source: {str(e)[:50]}")
+                        else:
+                            err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
+                            errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                    else:
+                        art_type = res.get("art_type", "unknown")
+                        
+                        exts = {
+                            "audio": "m4a",
+                            "video": "mp4",
+                            "report": "md",
+                            "slide_deck": "pdf",
+                            "infographic": "png",
+                            "data_table": "csv",
+                            "mind_map": "json",
+                            "quiz": "json",
+                            "flashcards": "json"
+                        }
+                        ext = exts.get(art_type.lower(), "bin")
+                        
+                        raw_title = res.get("title")
+                        if not raw_title: raw_title = f"Artefact_{art_type}"
+                        safe_title = "".join([c for c in str(raw_title) if c.isalnum() or c in ' ._-']).rstrip()
+                        if not safe_title: safe_title = str(res_id)
+                        
+                        out_path = os.path.join(dest, f"{safe_title}.{ext}")
+                        
+                        cmd = f'nlm download {art_type} "{self.selected_notebook_id}" --id "{res_id}" --output "{out_path}" --no-progress'
+                        p = subprocess.run(cmd, env=env, shell=True, capture_output=True, text=True)
+                        if p.returncode == 0:
+                            success_count += 1
+                        else:
+                            err_out = strip_ansi(p.stderr).strip() or strip_ansi(p.stdout).strip()
+                            errors.append(f"[{safe_title[:15]}] {err_out[:40]}")
+                            
+                    time.sleep(1)
+                
+                try:
+                    nb_title_str = self.lbl_resources.cget("text").replace('Carnet : "', '').replace('"', '').strip()
+                    if not nb_title_str or nb_title_str == "Sources et Artefacts": nb_title_str = "Notebook"
+                    safe_nb_title = "".join([c for c in nb_title_str if c.isalnum() or c in ' ._-']).rstrip()
+                    url_path = os.path.join(dest, f"Accès_Direct_{safe_nb_title}.url")
+                    
+                    with open(url_path, "w", encoding="utf-8") as f:
+                        f.write("[InternetShortcut]\n")
+                        f.write(f"URL=https://notebooklm.google.com/notebook/{self.selected_notebook_id}\n")
+                except Exception as e:
+                    errors.append(f"Erreur création raccourci URL: {str(e)[:50]}")
+                    
+            except Exception as e:
+                errors.append(f"Erreur critique: {str(e)[:100]}")
             
             if not errors:
                 msg = f"Terminé : {success_count}/{len(selected)} fichier(s) sauvegardé(s) !"
